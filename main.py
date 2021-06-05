@@ -27,6 +27,7 @@ parser.add_argument('--sample_dir', dest='sample_dir', default='./sample', help=
 parser.add_argument('--save_dir', dest='save_dir', default='./test_results', help='directory for testing outputs')
 parser.add_argument('--test_dir', dest='test_dir', default='./data/test/low', help='directory for testing inputs')
 parser.add_argument('--decom', dest='decom', default=0, help='decom flag, 0 for enhanced results only and 1 for decomposition results')
+parser.add_argument('--dataset_name', dest='dataset_name')
 
 args = parser.parse_args()
 
@@ -66,7 +67,11 @@ def lowlight_train(lowlight_enhance):
 
     lowlight_enhance.train(train_low_data, train_high_data, eval_low_data, batch_size=args.batch_size, patch_size=args.patch_size, epoch=args.epoch, lr=lr, sample_dir=args.sample_dir, ckpt_dir=os.path.join(args.ckpt_dir, 'Decom'), eval_every_epoch=args.eval_every_epoch, train_phase="Decom")
 
-    lowlight_enhance.train(train_low_data, train_high_data, eval_low_data, batch_size=args.batch_size, patch_size=args.patch_size, epoch=args.epoch, lr=lr, sample_dir=args.sample_dir, ckpt_dir=os.path.join(args.ckpt_dir, 'Relight'), eval_every_epoch=args.eval_every_epoch, train_phase="Relight")
+    lowlight_enhance.train(train_low_data, train_high_data, eval_low_data, 
+                          batch_size=args.batch_size, patch_size=args.patch_size, 
+                          epoch=args.epoch, lr=lr, sample_dir=args.sample_dir, 
+                          ckpt_dir=os.path.join(args.ckpt_dir, 'Relight'), 
+                          eval_every_epoch=args.eval_every_epoch, train_phase="Relight")
 
 
 def lowlight_test(lowlight_enhance):
@@ -80,11 +85,13 @@ def lowlight_test(lowlight_enhance):
     test_low_data_name = glob(os.path.join(args.test_dir) + '/*.*')
     test_low_data = []
     test_high_data = []
-    for idx in range(len(test_low_data_name)):
-        test_low_im = load_images(test_low_data_name[idx])
-        test_low_data.append(test_low_im)
+    # for idx in range(len(test_low_data_name)):
+    #     test_low_im = load_images(test_low_data_name[idx])
+    #     test_low_data.append(test_low_im)
 
-    lowlight_enhance.test(test_low_data, test_high_data, test_low_data_name, save_dir=args.save_dir, decom_flag=args.decom)
+    lowlight_enhance.test(test_low_data, test_high_data, test_low_data_name, 
+                          save_dir=args.save_dir, decom_flag=args.decom,
+                          dataset=args.dataset_name)
 
 
 def main(_):

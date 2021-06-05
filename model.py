@@ -3,13 +3,14 @@ from __future__ import print_function
 import os
 import time
 import random
-
+import glob
 from PIL import Image
 import tensorflow as tf
 import numpy as np
-
+import cv2
 from utils import *
-
+import torch
+import piq
 def concat(layers):
     return tf.concat(layers, axis=3)
 
@@ -222,7 +223,7 @@ class lowlight_enhance(object):
             print("[*] Failed to load model from %s" % ckpt_dir)
             return False, 0
 
-    def test(self, test_low_data, test_high_data, test_low_data_names, save_dir, decom_flag):
+    def test(self, test_low_data, test_high_data, test_low_data_names, save_dir, decom_flag, dataset='sice'):
         tf.global_variables_initializer().run()
 
         print("[*] Reading checkpoint...")
@@ -230,20 +231,68 @@ class lowlight_enhance(object):
         load_model_status_Relight, _ = self.load(self.saver_Relight, './model/Relight')
         if load_model_status_Decom and load_model_status_Relight:
             print("[*] Load weights successfully...")
-        
-        print("[*] Testing...")
-        for idx in range(len(test_low_data)):
+        count_over = 0
+        count_under = 0
+        ssim_all = 0
+        ssim_over = 0
+        ssim_under = 0
+        psnr_all = 0
+        psnr_under = 0
+        psnr_over = 0
+        print(f"[*] Testing... {len(test_low_data_names)}")
+        for idx in range(len(test_low_data_names)):
             print(test_low_data_names[idx])
             [_, name] = os.path.split(test_low_data_names[idx])
             suffix = name[name.find('.') + 1:]
             name = name[:name.find('.')]
 
-            input_low_test = np.expand_dims(test_low_data[idx], axis=0)
+            input_low_test = np.expand_dims(load_images(test_low_data_names[idx]), axis=0)
             [R_low, I_low, I_delta, S] = self.sess.run([self.output_R_low, self.output_I_low, self.output_I_delta, self.output_S], feed_dict = {self.input_low: input_low_test})
 
             if decom_flag == 1:
                 save_images(os.path.join(save_dir, name + "_R_low." + suffix), R_low)
                 save_images(os.path.join(save_dir, name + "_I_low." + suffix), I_low)
                 save_images(os.path.join(save_dir, name + "_I_delta." + suffix), I_delta)
-            save_images(os.path.join(save_dir, name + "_S."   + suffix), S)
+            save_images(os.path.join(save_dir, name + "."   + suffix), S)
+            # print(dataset)
+            if dataset is not None:
+               #lấy gt path
+                if dataset == 'sice':
+                  gt_path = glob.glob(os.path.join('/content/sice_paired_small', "Label", path.split("/")[-2] + ".*"))[0]
+                else:
+                  gt_path = glob.glob(test_low_data_names[idx].replace('INPUT_IMAGES','expert_e_testing_set').split('-')[0] + '*')[0]
+                # tinh ssim, psnr
+                img_gt = cv2.imread(gt_path)[:,:,::-1].copy()
+                y_pred = torch.from_numpy(S[:,:,::-1].copy()).permute(0,3,1,2) / 255.0
+                y = torch.from_numpy(img_gt).unsqueeze(0).permute(0,3,1,2) / 255.0
+                psnr = piq.psnr( y_pred, y, data_range=1.)
+                ssim = piq.ssim(y_pred, y,data_range=1.)
+                # decide neg or pos
+                if dataset == 'sice':
+                  mu_im = np.mean(input_low_test)
+                  is_neg = mu_im < (0.5 * 255)
+                else:
+                  is_neg = ('_N') in gt_path
+                # add to corresponding
+                if is_neg:
+                  ssim_under += ssim
+                  psnr_under += psnr
+                  count_under += 1
+                else:
+                  ssim_over += ssim
+                  psnr_over += psnr
+                  count_over += 1
+                ssim_all += ssim
+                psnr_all += psnr
+                # break
+        if count_under > 0:
+            print(f'psnr_under {psnr_under / count_under:.2f}')
+            print('count_under', count_under)
+            print('ssim_under', ssim_under / count_under)
+        if count_over > 0:
+            print('count_over', count_over)
+            print(f'psnr_over {psnr_over / count_over:.2f}')
+            print('ssim_over', ssim_over / count_over)
+        print(f'psnr_all {psnr_all / (count_over + count_under):.2f}')
+        print('ssim_all', ssim_all/ (count_over + count_under))
 
